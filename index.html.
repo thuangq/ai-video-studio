@@ -1,1 +1,347 @@
 
+
+<!DOCTYPE html>
+
+<html lang="vi">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<meta name="theme-color" content="#101020">
+
+<title>AI Video Studio</title>
+
+<style>
+
+*{box-sizing:border-box}
+
+body{margin:0;background:#101020;color:#fff;font-family:system-ui,sans-serif}
+
+header{padding:22px 18px;background:#191933}
+
+h1{font-size:25px;margin:0 0 6px}
+
+p{color:#c3c3dc;font-size:14px;line-height:1.5}
+
+main{padding:16px;max-width:650px;margin:auto}
+
+.panel{background:#1b1b35;padding:16px;border-radius:16px;margin-bottom:15px}
+
+label{display:block;margin:12px 0 7px;font-size:14px}
+
+input,button{width:100%;padding:12px;border-radius:10px}
+
+input{background:#292945;color:white;border:1px solid #484866}
+
+button{border:0;background:#8875ff;color:white;font-weight:700;font-size:16px;margin-top:10px}
+
+button:disabled{opacity:.5}
+
+canvas{width:100%;display:block;background:#080812;border-radius:12px}
+
+#status{white-space:pre-wrap}
+
+.small{font-size:12px;color:#aaaad0}
+
+</style>
+
+</head>
+
+<body>
+
+<header>
+
+  <h1>🎬 AI Video Studio</h1>
+
+  <p>Tạo video ảnh + nhạc ngay trên iPhone</p>
+
+</header>
+
+<main>
+
+  <section class="panel">
+
+    <h3>① Chọn nội dung</h3>
+
+    <label>Ảnh nền</label>
+
+    <input id="photo" type="file" accept="image/*">
+
+    <label>Nhạc MP3 / audio</label>
+
+    <input id="music" type="file" accept="audio/*">
+
+    <label>Chữ hiển thị trên video</label>
+
+    <input id="caption" value="Serenity Within" maxlength="100">
+
+    <label>Thời lượng thử (giây)</label>
+
+    <input id="duration" type="number" min="5" max="60" value="15">
+
+    <p class="small">Bản thử giới hạn 60 giây để tránh quá tải iPhone.</p>
+
+  </section>
+
+  <section class="panel">
+
+    <h3>② Xem trước</h3>
+
+    <canvas id="screen" width="720" height="1280"></canvas>
+
+    <button id="preview">▶ Xem trước</button>
+
+    <button id="stop" style="background:#454560">Dừng xem trước</button>
+
+  </section>
+
+  <section class="panel">
+
+    <h3>③ Tạo video</h3>
+
+    <button id="export">🎞️ Xuất video thử</button>
+
+    <p id="status">Hãy chọn ảnh và nhạc để bắt đầu.</p>
+
+    <a id="download" hidden style="color:#bcb2ff">Tải video vừa tạo</a>
+
+    <p class="small">Video được xử lý trên thiết bị. Định dạng xuất tùy khả năng Safari; hãy thử đoạn ngắn trước.</p>
+
+  </section>
+
+</main>
+
+<script>
+
+const $=id=>document.getElementById(id);
+
+const canvas=$("screen"),ctx=canvas.getContext("2d");
+
+let photo=null,raf=0,started=0,playing=false;
+
+let audio=null,audioCtx=null,source=null,dest=null;
+
+$("photo").onchange=e=>{
+
+ const f=e.target.files[0]; if(!f)return;
+
+ const url=URL.createObjectURL(f);
+
+ const img=new Image();
+
+ img.onload=()=>{photo=img;draw(0);URL.revokeObjectURL(url)};
+
+ img.src=url;
+
+};
+
+$("music").onchange=e=>{
+
+ const f=e.target.files[0];if(!f)return;
+
+ if(audio){audio.pause();URL.revokeObjectURL(audio.src)}
+
+ audio=new Audio(URL.createObjectURL(f));
+
+ audio.preload="auto";
+
+ $("status").textContent="Đã nạp nhạc. Sẵn sàng xem trước.";
+
+};
+
+function draw(t){
+
+ const w=canvas.width,h=canvas.height;
+
+ ctx.fillStyle="#111126";ctx.fillRect(0,0,w,h);
+
+ if(photo){
+
+   const scale=Math.max(w/photo.width,h/photo.height);
+
+   const zoom=1+0.035*(0.5+0.5*Math.sin(t/1800));
+
+   const sw=w/(scale*zoom),sh=h/(scale*zoom);
+
+   const sx=(photo.width-sw)/2,sy=(photo.height-sh)/2;
+
+   ctx.drawImage(photo,sx,sy,sw,sh,0,0,w,h);
+
+   ctx.fillStyle="rgba(0,0,15,.28)";ctx.fillRect(0,0,w,h);
+
+ }else{
+
+   ctx.fillStyle="#b9aaff";ctx.textAlign="center";
+
+   ctx.font="bold 42px system-ui";
+
+   ctx.fillText("AI VIDEO STUDIO",w/2,h/2);
+
+   ctx.font="26px system-ui";ctx.fillText("Chọn ảnh để bắt đầu",w/2,h/2+55);
+
+ }
+
+ const text=$("caption").value;
+
+ if(text){
+
+   ctx.textAlign="center";ctx.textBaseline="middle";
+
+   ctx.font="bold 42px system-ui";
+
+   ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.8)";
+
+   ctx.strokeText(text,w/2,h*.78,w-70);
+
+   ctx.fillStyle="#fff";ctx.fillText(text,w/2,h*.78,w-70);
+
+ }
+
+}
+
+function animate(){
+
+ if(!playing)return;
+
+ draw(performance.now()-started);
+
+ raf=requestAnimationFrame(animate);
+
+}
+
+$("caption").oninput=()=>draw(0);
+
+$("preview").onclick=()=>{
+
+ playing=true;started=performance.now();animate();
+
+ if(audio){audio.currentTime=0;audio.play().catch(()=>{});}
+
+};
+
+$("stop").onclick=()=>{
+
+ playing=false;cancelAnimationFrame(raf);
+
+ if(audio)audio.pause();
+
+ draw(0);
+
+};
+
+$("export").onclick=async()=>{
+
+ if(!photo){$("status").textContent="Vui lòng chọn ảnh trước.";return;}
+
+ if(!audio){$("status").textContent="Vui lòng chọn nhạc trước.";return;}
+
+ if(!window.MediaRecorder||!canvas.captureStream){
+
+   $("status").textContent="Safari hiện không hỗ trợ xuất video ở cấu hình này. Bạn vẫn có thể xem trước.";
+
+   return;
+
+ }
+
+ const seconds=Math.max(5,Math.min(60,Number($("duration").value)||15));
+
+ let stream,recorder,chunks=[];
+
+ try{
+
+   const types=["video/mp4;codecs=h264,aac","video/mp4","video/webm;codecs=vp9,opus","video/webm"];
+
+   const mime=types.find(t=>MediaRecorder.isTypeSupported(t));
+
+   if(!mime){$("status").textContent="Không tìm thấy định dạng video được hỗ trợ trên trình duyệt này.";return;}
+
+   if(!audioCtx){
+
+     audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+
+     source=audioCtx.createMediaElementSource(audio);
+
+     dest=audioCtx.createMediaStreamDestination();
+
+     source.connect(dest);source.connect(audioCtx.destination);
+
+   }
+
+   await audioCtx.resume();
+
+   const videoStream=canvas.captureStream(30);
+
+   stream=new MediaStream([
+
+     ...videoStream.getVideoTracks(),
+
+     ...dest.stream.getAudioTracks()
+
+   ]);
+
+   recorder=new MediaRecorder(stream,{mimeType:mime});
+
+   recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+
+   recorder.onstop=()=>{
+
+     const blob=new Blob(chunks,{type:mime});
+
+     const url=URL.createObjectURL(blob);
+
+     const link=$("download");
+
+     link.href=url;link.download="ai-video-studio."+ (mime.includes("mp4")?"mp4":"webm");
+
+     link.textContent="⬇ Tải video về iPhone";
+
+     link.hidden=false;
+
+     $("status").textContent="Đã tạo video ("+Math.round(blob.size/1024/1024*10)/10+" MB). Định dạng: "+(mime.includes("mp4")?"MP4":"WebM")+".";
+
+     stream.getTracks().forEach(t=>t.stop());
+
+   };
+
+   $("export").disabled=true;
+
+   $("status").textContent="Đang tạo video. Hãy để trang mở đến khi hoàn tất.";
+
+   recorder.start(500);
+
+   playing=true;started=performance.now();animate();
+
+   audio.currentTime=0;await audio.play();
+
+   setTimeout(()=>{
+
+     playing=false;cancelAnimationFrame(raf);audio.pause();
+
+     if(recorder.state!=="inactive")recorder.stop();
+
+     $("export").disabled=false;
+
+   },seconds*1000);
+
+ }catch(err){
+
+   $("export").disabled=false;
+
+   if(stream)stream.getTracks().forEach(t=>t.stop());
+
+   $("status").textContent="Không thể xuất video: "+err.message+". Hãy thử lại với đoạn nhạc ngắn.";
+
+ }
+
+};
+
+draw(0);
+
+</script>
+
+</body>
+
+</html>
